@@ -1,0 +1,146 @@
+---
+title: "Cellphone_Dataset_Logistic_Regression"
+author: "Kavita Karri"
+date: "23 September 2018"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+######Read the Dataset
+
+```{r}
+setwd("C:/Users/Kavita/Documents/Great Lakes/Assignments/Predictive Modelling")
+cell_data = read.csv("Dataset_Cellphone.csv", header = TRUE)
+str(cell_data)
+```
+
+######Converting the categorical variables to factor variables
+```{r}
+cell_data$Churn = as.factor(cell_data$Churn)
+cell_data$ContractRenewal = as.factor(cell_data$ContractRenewal)
+cell_data$DataPlan = as.factor(cell_data$DataPlan)
+str(cell_data)
+```
+
+
+######install.package("missmap")
+```{r}
+library(Amelia)
+missmap(cell_data,col = c("yellow","red"))
+```
+
+
+```{r}
+summary(cell_data)
+```
+
+######Our independent variable for this dataset is "Churn", which is the categorical variable with the binary responses ('0' is No and '1' is Yes). 
+######Split the data to 70:30 training and test datasets
+
+```{r}
+library(lattice)
+library(ggplot2)
+library(caret)
+
+set.seed(201)
+
+datapartition = createDataPartition(cell_data$Churn, p = 0.7, list = FALSE)
+
+cell_train = cell_data[datapartition,]
+cell_test = cell_data[-datapartition,]
+
+dim(cell_train)
+dim(cell_test)
+```
+
+######Logistic Regression Model
+```{r}
+LogModel = glm(Churn ~., data = cell_train, family = binomial(link = 'logit'))
+summary(LogModel)
+```
+
+######From the results, it is understandable that ContractRenewal, DataPlan, Customer Service Calls and Roaming minutes are significant.
+
+```{r}
+anova(LogModel)
+```
+
+
+#####Goodness of Fit
+
+######Understanding the model better through the log likelihood ratio results and pseudo R-square values
+
+```{r}
+library(zoo)
+library(lmtest)
+
+##Log Likelihood Test
+lrtest(LogModel)
+```
+
+######From the likelihood ratio model, the p-value <2.2e-16 is much smaller than 0.05 significance level to accept the null hypothesis. In this case we reject the null hypothesis.
+
+######Unlike linear regression with ordinary least squares estimation, there is no R^2 statistic which explains the proportion of variance in the dependent variable that is explained by the predictors. However, there are a number of pseudo R^2 metrics that could be of value. Most notable is McFadden's R^2, which is defined as 1 - [ ln(L_M) / ln(L_0) ] where ln(L_M) is the log likelihood value for the fitted model and ln(L_0) is the log likelihood for the null model with only an intercept as a predictor. The measure ranges from 0 to just under 1, with values closer to zero indicating that the model has no predictive power.
+
+```{r}
+library(pscl)
+
+##Pseudo R-Squared Model
+pR2(LogModel)
+```
+
+######Values for McFadden's R^2 range with 0 to just under 1 with values between above 0.2 generally being considered as satisfactory. If McFadden's R^2 is less then 0.2, then the model does a poor job in explaining the target variable.
+
+######The McFadden R-square value is 21.56%, which gives the uncertainity of the intercepts only model, this gives the moderate fit or considered as satisfactory.
+
+#####Wald Test
+######It is used to evaluate the statistical significance of each coefficient in the model and is calculated by taking the ratio of the square of the regression coefficient to the square of the standard error of the coefficient.
+######Through this we test the hypothesis that the coefficient of an independent variable in the model is significantly different from zero. If the test fails to reject the H_0, this suggests that removing the variable from the model will not substantially harm the fit of that model.
+######If the alpha for the Wald statistics is below 0.05, it should compel us to reject the null hypothesis and accept that the variable should be included in the model. However, an alpha that is greater than 0.05 suggests that those explanatory variables can be omitted from the model.
+
+```{r}
+library(survey)
+
+regTermTest(LogModel,"AccountWeeks")
+regTermTest(LogModel,"ContractRenewal")
+regTermTest(LogModel,"DataPlan")
+regTermTest(LogModel,"DataUsage")
+regTermTest(LogModel,"CustServCalls")
+regTermTest(LogModel,"DayMins")
+regTermTest(LogModel,"DayCalls")
+regTermTest(LogModel,"MonthlyCharge")
+regTermTest(LogModel,"OverageFee")
+regTermTest(LogModel,"RoamMins")
+```
+
+#####Predicting the test dataset
+
+```{r}
+pred_prob = predict(LogModel,cell_test[,2:11], type = "response")
+pred_response = ifelse(pred_prob>0.5,1,0)
+pred_response = as.integer(pred_response)
+
+str(pred_response)
+str(cell_test$Churn)
+##Confusion Matrix
+table(pred_response,cell_test$Churn)
+```
+
+#####K-Fold Cross Validation
+
+```{r}
+Cell_K = trainControl(method = "cv", number = 10)
+
+###Fit Naive Bayes Model
+CellModel = train(Churn ~., data = cell_data, method = "glm", family = binomial(link = "logit"), trControl = Cell_K)
+print(CellModel)
+summary(CellModel)
+```
+
+
